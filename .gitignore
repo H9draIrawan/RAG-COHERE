@@ -1,0 +1,36 @@
+# Ignore composer dependencies
+/vendor/
+
+# Ignore composer lock file
+composer.lock
+
+# Ignore environment variables
+.env
+
+# Ignore IDE files
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Ignore PHPUnit test results
+phpunit.xml
+phpunit.xml.dist
+
+# Ignore Laravel specific files
+/storage/
+Homestead.yaml
+Homestead.json
+
+# Ignore Symfony specific files
+/app/config/parameters.yml
+/app/config/parameters.yml.dist
+
+# Ignore cache and logs
+/cache/
+*.log
+
+# Ignore other common files
+*.bak
+*.tmp
+*.swp
+*.DS_Store
