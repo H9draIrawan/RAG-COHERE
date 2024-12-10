@@ -2,12 +2,11 @@
 class Retrieval {
     private $embeddingsPath;
     private $questionsPath;
-    private $minScore = 0.5; // Skor minimum untuk hasil yang relevan
     private $maxResults = 10; // Jumlah maksimum hasil yang dikembalikan
 
     public function __construct() {
-        $this->embeddingsPath = __DIR__ . "/database/embeddings_chunks.json";
-        $this->questionsPath = __DIR__ . "/database/embeddings_questions.json";
+        $this->embeddingsPath = __DIR__ . "/../database/embeddings_chunks.json";
+        $this->questionsPath = __DIR__ . "/../database/embeddings_questions.json";
     }
 
     public function findSimilarChunks() {
@@ -29,18 +28,16 @@ class Retrieval {
                 $similarity = $this->cosineSimilarity($questionEmbedding, $chunkEmbedding);
                 
                 // Hanya tambahkan jika skor di atas threshold
-                if ($similarity >= $this->minScore) {
-                    $similarities[] = [
-                        'index' => $index,
-                        'text' => $chunksData['texts'][$index],
-                        'score' => $similarity,
-                        // Tambahkan metadata tambahan
-                        'metadata' => [
-                            'length' => strlen($chunksData['texts'][$index]),
-                            'keywords' => $this->extractKeywords($chunksData['texts'][$index])
-                        ]
-                    ];
-                }
+                $similarities[] = [
+                    'index' => $index,
+                    'text' => $chunksData['texts'][$index],
+                    'score' => $similarity,
+                    // Tambahkan metadata tambahan
+                    'metadata' => [
+                        'length' => strlen($chunksData['texts'][$index]),
+                        'keywords' => $this->extractKeywords($chunksData['texts'][$index])
+                    ]
+                ];
             }
         }
 

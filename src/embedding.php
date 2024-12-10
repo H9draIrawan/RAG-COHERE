@@ -1,4 +1,5 @@
 <?php
+
 class Embedding {
     private $apiKey;
     private $model;
@@ -6,8 +7,8 @@ class Embedding {
     private $waitTime = 1; // Jeda dalam detik
 
     public function __construct() {
-        $this->apiKey = getenv('COHERE_API_KEY');
-        $this->model = getenv('COHERE_EMBEDDING_MODEL');
+        $this->apiKey = $_ENV['COHERE_API_KEY'];
+        $this->model = $_ENV['COHERE_EMBEDDING_MODEL'];
     }
 
     public function embedChunks($chunks) {
@@ -64,7 +65,10 @@ class Embedding {
 
         if (count($allEmbeddings) > 0 && count($allTexts) > 0) {
             $this->saveEmbeddings($allEmbeddings, $allTexts, 'chunks');
-        } 
+        }
+        else{
+            print_r("Error saat membuat embedding: " . $e->getMessage() . "\n");
+        }
         
         return $allEmbeddings;
     }
@@ -117,7 +121,8 @@ class Embedding {
     }
 
     private function saveEmbeddings($embeddings, $texts, $type) {
-        $filename = __DIR__ . "/database/embeddings_{$type}.json";
+        // Set path untuk menyimpan file embeddings
+        $filename = __DIR__ . "/../database/embeddings_" . $type . ".json";
         
         // Pastikan direktori ada
         if (!file_exists(dirname($filename))) {
