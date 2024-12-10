@@ -32,13 +32,17 @@ try {
                 break;
             case 'notes':
                 $response = $generate->generateNotes($_SESSION['results']);
+                if ($response && isset($response['answer'])) {
+                    $_SESSION['last_notes'] = $response['answer'];
+                }
                 break;
         }
         
         if ($response && isset($response['answer'])) {
             echo json_encode([
                 'success' => true,
-                'answer' => $response['answer']
+                'answer' => $response['answer'],
+                'canDownload' => $_POST['action'] === 'notes'
             ]);
         } else {
             echo json_encode([

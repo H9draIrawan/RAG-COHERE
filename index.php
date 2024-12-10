@@ -1,6 +1,15 @@
 <?php
 session_start();
 
+// Tambahkan pengecekan untuk reset session saat halaman di-refresh
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // Reset session variables
+    unset($_SESSION['chunks']);
+    unset($_SESSION['embeddings_chunks']);
+    unset($_SESSION['results']);
+    unset($_SESSION['response']);
+}
+
 require 'vendor/autoload.php';
 require 'src/chunk.php';
 require 'src/embedding.php';
@@ -189,7 +198,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="bg-white rounded-lg shadow-md overflow-hidden">
                 <div class="flex justify-between items-center p-4 border-b border-gray-200">
                     <h3 class="response-title text-lg font-semibold text-gray-800"></h3>
-                    <span class="response-timestamp text-sm text-gray-500"></span>
+                    <div class="flex items-center gap-4">
+                        <!-- Tombol Download -->
+                        <a href="controller/download_notes.php" 
+                           id="downloadButton"
+                           class="hidden px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 
+                                  transition duration-200 text-sm flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                            Download
+                        </a>
+                        <span class="response-timestamp text-sm text-gray-500"></span>
+                    </div>
                 </div>
                 <div class="response-content p-6 prose max-w-none"></div>
             </div>
@@ -218,7 +239,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $(document).ready(function() {
-            // Handle file upload
+            // Cek status session saat halaman dimuat
+            function checkSessionStatus() {
+                if (!<?php echo isset($_SESSION['chunks']) ? 'true' : 'false'; ?>) {
+                    // Nonaktifkan semua form kecuali upload
+                    $('#chatForm, #summaryForm, #exercisesForm, #notesForm').find('input, button').prop('disabled', true);
+                    $('#responseArea').hide();
+                    
+                    // Tambahkan pesan untuk user
+                    $('.tab-content').each(function() {
+                        if (this.id !== 'uploadForm') {
+                            $(this).prepend(`
+                                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                                    <div class="flex">
+                                        <div class="flex-shrink-0">
+                                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                            </svg>
+                                        </div>
+                                        <div class="ml-3">
+                                            <p class="text-sm text-yellow-700">
+                                                Silakan upload file PDF terlebih dahulu
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `);
+                        }
+                    });
+                } else {
+                    // Aktifkan semua form jika ada file yang sudah diupload
+                    $('#chatForm, #summaryForm, #exercisesForm, #notesForm').find('input, button').prop('disabled', false);
+                    $('.tab-content .bg-yellow-50').remove(); // Hapus pesan warning
+                }
+            }
+
+            // Jalankan pengecekan saat halaman dimuat
+            checkSessionStatus();
+
+            // Handle file upload success
             $('#uploadForm').on('submit', function(e) {
                 e.preventDefault();
                 var formData = new FormData(this);
@@ -234,6 +293,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     success: function(response) {
                         if (response.success) {
                             $('#errorMessage').hide();
+                            // Aktifkan form-form setelah upload berhasil
+                            $('#chatForm, #summaryForm, #exercisesForm, #notesForm')
+                                .find('input, button')
+                                .prop('disabled', false);
+                            $('.tab-content .bg-yellow-50').remove(); // Hapus pesan warning
                         } else {
                             $('#errorMessage').text(response.error).show();
                         }
@@ -257,6 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $('#responseLoading').show();
                 $('#responseArea').hide();
+                $('#downloadButton').hide(); // Sembunyikan tombol download
                 
                 $.ajax({
                     url: 'controller/process_request.php',
@@ -287,6 +352,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             
                             $('#responseArea').show();
                             $('#errorMessage').hide();
+
+                            // Tampilkan tombol download hanya untuk catatan
+                            if (response.canDownload) {
+                                $('#downloadButton').show();
+                            } else {
+                                $('#downloadButton').hide();
+                            }
                         } else {
                             $('#errorMessage').text(response.error).show();
                         }
@@ -304,13 +376,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             function formatResponse(text, action) {
                 switch(action) {
                     case 'exercises':
-                        return text.split(/(?=\d+\.)/).map(function(exercise) {
-                            if (!exercise.trim()) return '';
-                            return `<div class="mb-8 p-6 bg-gray-50 rounded-lg">
-                                      <div class="prose">${exercise}</div>
-                                   </div>`;
-                        }).join('');
-
+                        try {
+                            let exercises = typeof text === 'object' ? text : JSON.parse(text);
+                            return exercises.soal.map(function(soal) {
+                                return `
+                                <div class="exercise-item mb-8 p-6 bg-gray-50 rounded-lg" data-nomor="${soal.nomor}">
+                                    <div class="question mb-4">
+                                        <p class="font-semibold mb-2">Soal ${soal.nomor}:</p>
+                                        <p class="mb-4">${soal.pertanyaan}</p>
+                                    </div>
+                                    
+                                    <div class="options space-y-2 mb-4">
+                                        ${Object.entries(soal.pilihan).map(([key, value]) => `
+                                            <div class="option flex items-center space-x-2">
+                                                <input type="radio" 
+                                                       id="soal${soal.nomor}_${key}" 
+                                                       name="soal${soal.nomor}" 
+                                                       value="${key}"
+                                                       class="form-radio">
+                                                <label for="soal${soal.nomor}_${key}">
+                                                    ${key}. ${value}
+                                                </label>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    
+                                    <div class="mt-4">
+                                        <button onclick="checkAnswer(${soal.nomor}, '${soal.jawaban_benar}')"
+                                                class="check-answer bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+                                            Periksa Jawaban
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="explanation mt-4 hidden" id="explanation_${soal.nomor}">
+                                        <div class="result p-4 rounded-md mb-2"></div>
+                                        <div class="p-4 bg-white rounded-md">
+                                            <p class="font-semibold mb-2">Penjelasan:</p>
+                                            <p>${soal.penjelasan}</p>
+                                        </div>
+                                    </div>
+                                </div>`;
+                            }).join('');
+                        } catch (e) {
+                            console.error('Error formatting exercises:', e);
+                            return `<div class="error p-4 bg-red-100 text-red-700 rounded-lg">
+                                Error memformat soal latihan: ${e.message}
+                            </div>`;
+                        }
+                        
                     case 'summary':
                         return text.split('\n').map(function(point) {
                             if (!point.trim()) return '';
@@ -336,6 +449,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         });
+
+        // Tambahkan fungsi untuk memeriksa jawaban
+        function checkAnswer(nomorSoal, jawabanBenar) {
+            const selectedAnswer = document.querySelector(`input[name="soal${nomorSoal}"]:checked`);
+            const explanationDiv = document.getElementById(`explanation_${nomorSoal}`);
+            const resultDiv = explanationDiv.querySelector('.result');
+            
+            if (!selectedAnswer) {
+                alert('Silakan pilih jawaban terlebih dahulu');
+                return;
+            }
+            
+            const isCorrect = selectedAnswer.value === jawabanBenar;
+            
+            // Tampilkan hasil dan penjelasan
+            explanationDiv.classList.remove('hidden');
+            
+            if (isCorrect) {
+                resultDiv.className = 'result p-4 bg-green-100 text-green-700 rounded-md mb-2';
+                resultDiv.innerHTML = '<span class="font-semibold">Benar!</span> Jawaban Anda tepat.';
+            } else {
+                resultDiv.className = 'result p-4 bg-red-100 text-red-700 rounded-md mb-2';
+                resultDiv.innerHTML = `<span class="font-semibold">Kurang tepat.</span> Jawaban yang benar adalah ${jawabanBenar}.`;
+            }
+            
+            // Nonaktifkan input dan tombol setelah menjawab
+            const options = document.querySelectorAll(`input[name="soal${nomorSoal}"]`);
+            options.forEach(opt => opt.disabled = true);
+            
+            const checkButton = explanationDiv.previousElementSibling.querySelector('.check-answer');
+            checkButton.disabled = true;
+            checkButton.classList.add('opacity-50', 'cursor-not-allowed');
+        }
     </script>
 </body>
 </html>

@@ -62,12 +62,68 @@ class Generate {
         try {
             $documents = $this->prepareDocuments($retrievalResults);
             $systemPrompt = "Anda adalah seorang guru yang membuat soal latihan berdasarkan materi dalam dokumen. " .
-                        "Buatlah 5 soal latihan pilihan ganda beserta jawabannya. " .
-                        "Setiap soal harus mencakup konsep penting dari materi. " .
-                        "Berikan juga penjelasan untuk setiap jawaban. " .
-                        "Gunakan bahasa Indonesia.";
+                        "Ikuti format berikut untuk membuat soal dalam format JSON:\n" .
+                        "{\n" .
+                        "  \"soal\": [\n" .
+                        "    {\n" .
+                        "      \"nomor\": 1,\n" .
+                        "      \"pertanyaan\": \"[pertanyaan]\",\n" .
+                        "      \"pilihan\": {\n" .
+                        "        \"A\": \"[pilihan A]\",\n" .
+                        "        \"B\": \"[pilihan B]\",\n" .
+                        "        \"C\": \"[pilihan C]\",\n" .
+                        "        \"D\": \"[pilihan D]\"\n" .
+                        "      },\n" .
+                        "      \"jawaban_benar\": \"[A/B/C/D]\",\n" .
+                        "      \"penjelasan\": \"[penjelasan jawaban]\"\n" .
+                        "    }\n" .
+                        "  ]\n" .
+                        "}\n\n" .
+                        "Buat 10 soal pilihan ganda dengan ketentuan:\n" .
+                        "1. Setiap soal harus mencakup konsep penting dari materi\n" .
+                        "2. Pastikan soal bervariasi dari tingkat kesulitan mudah hingga sulit\n" .
+                        "3. Berikan penjelasan yang detail untuk setiap jawaban\n" .
+                        "4. Response HARUS dalam format JSON yang valid\n" .
+                        "Gunakan bahasa Indonesia yang formal dan mudah dipahami.";
 
-            return $this->callCohereAPI("Buatkan soal latihan dari materi berikut", $documents, $systemPrompt, 'exercises');
+            $response = $this->callCohereAPI(
+                "Buatkan soal latihan dari materi berikut dengan format JSON yang telah ditentukan", 
+                $documents, 
+                $systemPrompt, 
+                'exercises'
+            );
+
+            // Tambahkan validasi dan parsing JSON
+            if ($response['success']) {
+                try {
+                    // Bersihkan string JSON dari karakter yang tidak diinginkan
+                    $jsonStr = preg_replace('/```json\s*|\s*```/', '', $response['answer']);
+                    $jsonStr = trim($jsonStr);
+                    
+                    // Parse JSON
+                    $exercises = json_decode($jsonStr, true);
+                    
+                    if (json_last_error() === JSON_ERROR_NONE && isset($exercises['soal'])) {
+                        return [
+                            'success' => true,
+                            'answer' => $exercises,
+                            'task' => 'exercises'
+                        ];
+                    } else {
+                        return [
+                            'success' => false,
+                            'error' => 'Format JSON tidak valid: ' . json_last_error_msg()
+                        ];
+                    }
+                } catch (Exception $e) {
+                    return [
+                        'success' => false,
+                        'error' => 'Gagal memproses response: ' . $e->getMessage()
+                    ];
+                }
+            }
+            
+            return $response;
         } catch (Exception $e) {
             return ['error' => $e->getMessage()];
         }
@@ -93,11 +149,11 @@ class Generate {
         
         // Sesuaikan temperature berdasarkan task
         $temperature = match($task) {
-            'chat' => 0.3,
-            'summary' => 0.2,
-            'exercises' => 0.7,
+            'chat' => 0.7,
+            'summary' => 0.3,
+            'exercises' => 0.8,
             'notes' => 0.4,
-            default => 0.3
+            default => 0.5
         };
 
         $payload = [
