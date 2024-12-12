@@ -18,27 +18,15 @@ class Generate {
         $this->model = $_ENV['COHERE_CHAT_MODEL'];
     }
 
-    // Fungsi helper untuk mempersiapkan dokumen
-    private function prepareDocuments($retrievalResults) {
-        $documents = [];
-        foreach ($retrievalResults as $result) {
-            if ($result['score'] > 0.5) {
-                $documents[] = $result['text'];
-            }
-        }
-        return $documents;
-    }
-
-    public function chat($question, $retrievalResults) {
+    public function generateChat($question, $retrievalResults) {
         try {
-            $documents = $this->prepareDocuments($retrievalResults);
             $systemPrompt = "Anda adalah asisten yang membantu menjawab pertanyaan berdasarkan dokumen yang diberikan. " .
                         "Gunakan informasi dari dokumen untuk memberikan jawaban yang akurat. " . 
                         "Jika informasi tidak tersedia dalam dokumen, katakan bahwa Anda tidak dapat menjawab berdasarkan dokumen yang ada. " .
                         "Jika pertanyaan tidak ada hubungannya dengan dokumen, katakan bahwa Anda tidak dapat menjawab pertanyaan tersebut. " .
-                        "Jawab dalam bahasa Indonesia.";
-
-            return $this->callCohereAPI($question, $documents, $systemPrompt, 'chat');
+                        "Jawab sebaik mungkin dengan bahasa Indonesia.";
+            print_r($retrievalResults);
+            return $this->callCohereAPI($question, $retrievalResults, $systemPrompt, 'chat');
         } catch (Exception $e) {
             return ['error' => $e->getMessage()];
         }
@@ -149,9 +137,9 @@ class Generate {
         
         // Sesuaikan temperature berdasarkan task
         $temperature = match($task) {
-            'chat' => 0.7,
+            'chat' => 0.1,  
             'summary' => 0.3,
-            'exercises' => 0.8,
+            'exercises' => 0.5,
             'notes' => 0.4,
             default => 0.5
         };
@@ -175,7 +163,6 @@ class Generate {
                 ],
                 'model' => $this->model,
                 'temperature' => $temperature,
-                'stream' => false,
                 'documents' => array_map(function($doc) {
                     return [
                         'id' => md5($doc),

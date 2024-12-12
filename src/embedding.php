@@ -4,7 +4,9 @@ class Embedding {
     private $apiKey;
     private $model;
     private $batchSize = 96; // Batas maksimum per panggilan API
-    private $waitTime = 1; // Jeda dalam detik
+    private $waitTime = 60; // Jeda dalam detik antara batch
+    private $maxRetries = 3; // Jumlah maksimum percobaan ulang
+    private $retryDelay = 65; // Waktu tunggu dalam detik sebelum mencoba ulang
 
     public function __construct() {
         $this->apiKey = $_ENV['COHERE_API_KEY'];
@@ -12,71 +14,49 @@ class Embedding {
     }
 
     public function embedChunks($chunks) {
-        // Tambahkan set_time_limit untuk menghindari timeout
-        set_time_limit(0); // 0 berarti tidak ada batas waktu
+        set_time_limit(0); // Hindari timeout untuk proses panjang
         
         $batchChunks = array_chunk($chunks, $this->batchSize);
         $allEmbeddings = [];
         $allTexts = []; 
-        
+
         foreach ($batchChunks as $index => $batch) {
-            $maxRetries = 3;
             $retryCount = 0;
-            
-            while ($retryCount < $maxRetries) {
+            $success = false;
+
+            while (!$success && $retryCount < $this->maxRetries) {
                 try {
-                    
                     $response = $this->callCohereAPI($batch);
-                    if (isset($response['embeddings'])) {
-                        $embedCount = count($response['embeddings']);
-                        
-                        $allEmbeddings = array_merge($allEmbeddings, $response['embeddings']);
-                        $allTexts = array_merge($allTexts, $response['texts']);
-                        
-                        if (($index + 1) % 5 == 0) {
-                            $this->saveEmbeddings($allEmbeddings, $allTexts, 'chunks_progress');
-                        }
-                        
-                        // Jika berhasil, keluar dari loop while
-                        break;
-                    }
-                    
-                    sleep(60); // Tunggu 1 menit antar batch untuk menghindari rate limit
-                    
+                    $allEmbeddings = array_merge($allEmbeddings, $response['embeddings']);
+                    $allTexts = array_merge($allTexts, $response['texts']);
+                    $success = true;
                 } catch (\Exception $e) {
                     $retryCount++;
-                    
-                    if (strpos($e->getMessage(), '429') !== false) {
-                        $waitTime = pow(2, $retryCount) * 60; // Exponential backoff dalam detik
-                        sleep($waitTime);
-                        continue;
-                    }
-                    
-                    if ($retryCount >= $maxRetries) {
-                        // Simpan progress jika terjadi error
-                        if (count($allEmbeddings) > 0) {
-                            $this->saveEmbeddings($allEmbeddings, $allTexts, 'chunks_error_backup');
-                        }
-                        break;
-                    }
+                    sleep(60);
                 }
             }
         }
 
-        if (count($allEmbeddings) > 0 && count($allTexts) > 0) {
-            $this->saveEmbeddings($allEmbeddings, $allTexts, 'chunks');
-        }
-        else{
-            print_r("Error saat membuat embedding: " . $e->getMessage() . "\n");
-        }
-        
-        return $allEmbeddings;
+        // Simpan hasil embedding
+        $this->saveEmbeddings($allEmbeddings, $allTexts, 'chunks');
     }
 
+
     public function embedQuestions($question) {
+        $logFile = __DIR__ . "/../logs/question_embedding.log";
+        
+        // Pastikan direktori log ada
+        if (!file_exists(dirname($logFile))) {
+            mkdir(dirname($logFile), 0777, true);
+        }
+        
+        $timestamp = date('Y-m-d H:i:s');
+        $logMessage = "[$timestamp] Memproses pertanyaan: $question\n";
+        file_put_contents($logFile, $logMessage, FILE_APPEND);
 
         $allEmbeddings = [];
         $allTexts = [];
+        
         try {
             // Kirim pertanyaan sebagai array dengan satu elemen
             $response = $this->callCohereAPI([$question]);
@@ -85,10 +65,16 @@ class Embedding {
             $allTexts = array_merge($allTexts, $response['texts']);
             
             $this->saveEmbeddings($allEmbeddings, $allTexts, 'questions');
+            
+            $logMessage = "[$timestamp] Berhasil membuat embedding untuk pertanyaan\n";
+            file_put_contents($logFile, $logMessage, FILE_APPEND);
+            
+            return $allEmbeddings;
 
         } catch (\Exception $e) {
-            print_r("Error saat membuat embedding pertanyaan: " . $e->getMessage() . "\n");
-            return null;
+            $errorMessage = "[$timestamp] Error saat membuat embedding pertanyaan: " . $e->getMessage() . "\n";
+            file_put_contents($logFile, $errorMessage, FILE_APPEND);
+            throw $e;
         }
     }
 

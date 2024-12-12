@@ -1,111 +1,164 @@
 <?php
 class Retrieval {
     private $embeddingsPath;
-    private $questionsPath;
-    private $maxResults = 10; // Jumlah maksimum hasil yang dikembalikan
+    private $maxResults = 10;
+    private $logFile;
 
     public function __construct() {
         $this->embeddingsPath = __DIR__ . "/../database/embeddings_chunks.json";
-        $this->questionsPath = __DIR__ . "/../database/embeddings_questions.json";
+        $this->logFile = __DIR__ . "/../logs/retrieval.log";
+        
+        // Buat direktori log jika belum ada
+        if (!file_exists(dirname($this->logFile))) {
+            mkdir(dirname($this->logFile), 0777, true);
+        }
     }
 
-    public function findSimilarChunks() {
-        // Load embeddings
-        $chunksData = json_decode(file_get_contents($this->embeddingsPath), true);
-        $questionData = json_decode(file_get_contents($this->questionsPath), true);
+    private function logMessage($message) {
+        $timestamp = date('Y-m-d H:i:s');
+        $logMessage = "[$timestamp] $message\n";
+        file_put_contents($this->logFile, $logMessage, FILE_APPEND);
+    }
 
-        if (!$chunksData || !$questionData) {
-            throw new Exception("Tidak dapat membaca file embeddings");
-        }
+    public function findSimilarChunks($questionEmbedding) {
+        try {
+            $this->logMessage("Mulai mencari chunk yang relevan");
 
-        $questionEmbedding = $questionData['embeddings']['float'][0];
-        $similarities = [];
+            if (!file_exists($this->embeddingsPath)) {
+                throw new Exception("File embeddings chunks tidak ditemukan");
+            }
 
-        // Hitung cosine similarity untuk setiap chunk
-        foreach ($chunksData['embeddings']['float'] as $index => $chunkEmbedding) {
-            // Pastikan kedua embedding adalah array numerik
-            if (is_array($questionEmbedding) && is_array($chunkEmbedding)) {
-                $similarity = $this->cosineSimilarity($questionEmbedding, $chunkEmbedding);
+            $chunksData = json_decode(file_get_contents($this->embeddingsPath), true);
+            
+            if (!isset($chunksData['embeddings']) || !isset($chunksData['texts'])) {
+                throw new Exception("Format data chunks tidak valid");
+            }
+
+            $similarities = [];
+            
+            // Preprocessing question vector
+            $questionVector = $this->preprocessVector($questionEmbedding['float'][0]);
+            
+            for ($i = 0; $i < count($chunksData['embeddings']['float']); $i++) {
+                // Preprocessing chunk vector
+                $chunkVector = $this->preprocessVector($chunksData['embeddings']['float'][$i]);
                 
-                // Hanya tambahkan jika skor di atas threshold
+                $similarity = $this->cosineSimilarity($questionVector, $chunkVector);
+
                 $similarities[] = [
-                    'index' => $index,
-                    'text' => $chunksData['texts'][$index],
-                    'score' => $similarity,
-                    // Tambahkan metadata tambahan
-                    'metadata' => [
-                        'length' => strlen($chunksData['texts'][$index]),
-                        'keywords' => $this->extractKeywords($chunksData['texts'][$index])
-                    ]
+                    'text' => $chunksData['texts'][$i],
+                    'score' => $similarity
                 ];
             }
-        }
 
-        // Urutkan berdasarkan skor dan faktor lain
-        usort($similarities, function($a, $b) {
-            // Berikan bobot untuk panjang teks (lebih panjang = lebih lengkap)
-            $lengthWeight = 0.1;
-            $lengthScoreA = min(1, $a['metadata']['length'] / 1000) * $lengthWeight;
-            $lengthScoreB = min(1, $b['metadata']['length'] / 1000) * $lengthWeight;
+            usort($similarities, function($a, $b) {
+                return $b['score'] <=> $a['score'];
+            });
+
+            $results = array_slice($similarities, 0, $this->maxResults);
             
-            // Kombinasikan skor similarity dengan faktor lain
-            $finalScoreA = $a['score'] + $lengthScoreA;
-            $finalScoreB = $b['score'] + $lengthScoreB;
-            
-            return $finalScoreB <=> $finalScoreA;
-        });
+            $this->logMessage("Berhasil menemukan " . count($results) . " chunk relevan");
+            return $results;
 
-        // Ambil hasil terbaik
-        $results = array_slice($similarities, 0, $this->maxResults);
-        
-        // Normalisasi skor
-        $maxScore = max(array_column($results, 'score'));
-        foreach ($results as &$result) {
-            $result['score'] = round($result['score'] / $maxScore, 4);
+        } catch (Exception $e) {
+            $this->logMessage("Error: " . $e->getMessage());
+            throw $e;
         }
-
-        return $results;
     }
 
     private function cosineSimilarity($vector1, $vector2) {
-        $dotProduct = 0;
-        $norm1 = 0;
-        $norm2 = 0;
-
-        foreach ($vector1 as $i => $value1) {
-            $value2 = $vector2[$i];
-            $dotProduct += $value1 * $value2;
-            $norm1 += $value1 * $value1;
-            $norm2 += $value2 * $value2;
-        }
-
-        $norm1 = sqrt($norm1);
-        $norm2 = sqrt($norm2);
-
-        if ($norm1 == 0 || $norm2 == 0) {
+        if (!is_array($vector1) || !is_array($vector2) || count($vector1) !== count($vector2)) {
+            $this->logMessage("Error: Vector tidak valid untuk cosine similarity");
             return 0;
         }
 
-        return $dotProduct / ($norm1 * $norm2);
+        try {
+            $dotProduct = 0;
+            $magnitude1 = 0;
+            $magnitude2 = 0;
+
+            foreach ($vector1 as $i => $val1) {
+                $val2 = $vector2[$i];
+                
+                if (!is_numeric($val1) || !is_numeric($val2)) {
+                    throw new Exception("Nilai non-numerik ditemukan dalam vector");
+                }
+
+                $dotProduct += $val1 * $val2;
+                $magnitude1 += $val1 * $val1;
+                $magnitude2 += $val2 * $val2;
+            }
+
+            $magnitude1 = sqrt($magnitude1);
+            $magnitude2 = sqrt($magnitude2);
+
+            if ($magnitude1 == 0 || $magnitude2 == 0) {
+                throw new Exception("Magnitude vector adalah nol");
+            }
+
+            $similarity = $dotProduct / ($magnitude1 * $magnitude2);
+            
+            return max(0, $similarity);
+
+        } catch (Exception $e) {
+            $this->logMessage("Error dalam perhitungan cosine similarity: " . $e->getMessage());
+            return 0;
+        }
     }
 
-    private function extractKeywords($text, $limit = 5) {
-        // Hapus stopwords dan karakter khusus
-        $text = preg_replace('/[^\p{L}\p{N}\s]/u', '', strtolower($text));
-        $words = str_word_count($text, 1); // Pisahkan kata-kata
-        
-        // Hitung frekuensi kata
-        $wordFreq = array_count_values($words);
-        
-        // Urutkan berdasarkan frekuensi
-        arsort($wordFreq);
-        
-        // Ambil kata-kata teratas
-        return array_slice(array_keys($wordFreq), 0, $limit);
+    public function search($questionEmbedding) {
+        try {
+            $this->logMessage("Mulai pencarian untuk pertanyaan baru");
+            
+            // Cari chunk yang relevan
+            $similarChunks = $this->findSimilarChunks($questionEmbedding);
+            
+            // Format hasil untuk ditampilkan
+            $results = [];
+            foreach ($similarChunks as $chunk) {
+                $results[] = [
+                    'text' => $this->cleanText($chunk['text']),
+                    'score' => round($chunk['score'], 4),
+                    'relevance' => $this->getRelevanceLabel($chunk['score'])
+                ];
+            }
+            
+            $this->logMessage("Pencarian selesai dengan " . count($results) . " hasil");
+            return $results;
+
+        } catch (Exception $e) {
+            $this->logMessage("Error dalam pencarian: " . $e->getMessage());
+            throw $e;
+        }
     }
 
-    public function search() {
-        return $this->findSimilarChunks();
+    private function cleanText($text) {
+        // Bersihkan text dari karakter yang tidak diinginkan
+        $text = preg_replace('/\s+/', ' ', $text); // Gabungkan multiple spaces
+        $text = trim($text); // Hapus whitespace di awal dan akhir
+        return $text;
+    }
+
+    private function getRelevanceLabel($score) {
+        if ($score >= 0.4) return "Sangat Relevan";
+        if ($score >= 0.3) return "Relevan"; 
+        if ($score >= 0.2) return "Cukup Relevan";
+        return "Kurang Relevan";
+    }
+
+    private function preprocessText($text) {
+        $text = strtolower($text); // Konversi ke lowercase
+        $text = preg_replace('/[^\p{L}\p{N}\s]/u', '', $text); // Hapus karakter khusus
+        $text = preg_replace('/\s+/', ' ', $text); // Normalisasi spasi
+        return trim($text);
+    }
+
+    private function preprocessVector($vector) {
+        // Menghilangkan nilai yang terlalu kecil (noise)
+        $threshold = 0.001;
+        return array_map(function($val) use ($threshold) {
+            return abs($val) < $threshold ? 0 : $val;
+        }, $vector);
     }
 }
 ?>
