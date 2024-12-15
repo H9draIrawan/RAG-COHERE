@@ -4,9 +4,8 @@ class Embedding {
     private $apiKey;
     private $model;
     private $batchSize = 96; // Batas maksimum per panggilan API
-    private $waitTime = 60; // Jeda dalam detik antara batch
     private $maxRetries = 3; // Jumlah maksimum percobaan ulang
-    private $retryDelay = 65; // Waktu tunggu dalam detik sebelum mencoba ulang
+    private $retryDelay = 60; // Waktu tunggu dalam detik sebelum mencoba ulang
 
     public function __construct() {
         $this->apiKey = $_ENV['COHERE_API_KEY'];
@@ -32,7 +31,7 @@ class Embedding {
                     $success = true;
                 } catch (\Exception $e) {
                     $retryCount++;
-                    sleep(60);
+                    sleep($this->retryDelay);
                 }
             }
         }
@@ -85,6 +84,14 @@ class Embedding {
             $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
             // Bersihkan karakter yang tidak valid
             $text = preg_replace('/[\x00-\x1F\x7F]/u', '', $text);
+            // Hapus karakter yang tidak diinginkan
+            $text = preg_replace('/[\x80-\xFF]/', '', $text);
+            // Hapus karakter newline
+            $text = preg_replace('/[\r\n]+/', ' ', $text);
+            // Hapus karakter ganda
+            $text = preg_replace('/[ ]+/', ' ', $text);
+            // Hapus karakter leading dan trailing whitespace
+            $text = trim($text);
             return $text;
         }, $texts);
 

@@ -5,9 +5,9 @@ class Chunk {
     private $chunkSize;
     private $chunkOverlap;
     private $logFile;
-    private $minChunkLength = 50; // Minimal panjang chunk yang valid
+    private $minChunkLength = 100; // Minimal panjang chunk yang valid
 
-    public function __construct($chunkSize = 300, $chunkOverlap = 10) {
+    public function __construct($chunkSize = 512, $chunkOverlap = 128) {
         $this->chunkSize = $chunkSize;
         $this->chunkOverlap = $chunkOverlap;
         $this->logFile = __DIR__ . "/../logs/chunk_process.log";
@@ -25,7 +25,6 @@ class Chunk {
 
     public function processPDF($filePath) {
         $text = $this->extractTextFromPDF($filePath);
-        $text = $this->cleanText($text);
         return $this->splitTextIntoChunks($text);
     }
 
@@ -44,21 +43,6 @@ class Chunk {
         }
         return $chunks;
     }
-
-    private function cleanText($text) {
-        // Remove non-printable characters
-        $text = preg_replace('/[\x00-\x1F\x7F-\xFF]/', '', $text);
-        // Remove non-ASCII characters
-        $text = preg_replace('/[\x80-\xFF]/', '', $text);
-        // Remove newlines
-        $text = preg_replace('/[\r\n]+/', ' ', $text);
-        // Remove multiple spaces
-        $text = preg_replace('/[ ]+/', ' ', $text);
-        // Remove leading and trailing whitespace
-        $text = trim($text);
-        return $text;
-    }
-
 
 }
 ?>

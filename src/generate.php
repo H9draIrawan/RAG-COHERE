@@ -25,7 +25,6 @@ class Generate {
                         "Jika informasi tidak tersedia dalam dokumen, katakan bahwa Anda tidak dapat menjawab berdasarkan dokumen yang ada. " .
                         "Jika pertanyaan tidak ada hubungannya dengan dokumen, katakan bahwa Anda tidak dapat menjawab pertanyaan tersebut. " .
                         "Jawab sebaik mungkin dengan bahasa Indonesia.";
-            print_r($retrievalResults);
             return $this->callCohereAPI($question, $retrievalResults, $systemPrompt, 'chat');
         } catch (Exception $e) {
             return ['error' => $e->getMessage()];

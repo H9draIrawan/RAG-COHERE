@@ -4,19 +4,19 @@ session_start();
 require 'vendor/autoload.php';
 require 'src/chunk.php';
 require 'src/embedding.php';
-require 'src/retrieval.php';
+require 'src/retrieve.php';
 require 'src/rerank.php';
 require 'src/generate.php';
+
 // Load .env
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 $chunks = new Chunk();
 $embedding = new Embedding();
-$retrieval = new Retrieval();
+$retrieve = new Retrieve();
 $rerank = new Rerank();
 $generate = new Generate();
-
 // Handle file upload
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["pdfFile"])) {
     $pdfFile = $_FILES["pdfFile"];
@@ -24,44 +24,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["pdfFile"])) {
     try {
         // Proses chunking
         $chunks = $chunks->processPDF($pdfFile["tmp_name"]);
-
         // Proses embedding
         $embedding->embedChunks($chunks);
-        
     } catch (Exception $e) {
         $_SESSION['error'] = "Error saat memproses file: " . $e->getMessage();
     }
 }
 
 // Handle chat question
-// if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["question"])) {
-//     $question = trim($_POST["question"]);
-//     if (!empty($question)) {
-//         try {
-//             // Embed pertanyaan user
-//             $questionEmbedding = $embedding->embedQuestions($question);
-//             // Retrieve similar chunks
-//             $similarChunks = $retrieval->search($questionEmbedding);
-//             // Rerank similar chunks
-//             $rerankedResults = $rerank->rerank($question, $similarChunks);
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["question"])) {
+    $question = trim($_POST["question"]);
+    $embededQuestion = $embedding->embedQuestions($question);
+    $results = $retrieve->search($embededQuestion);
+    $rankedResults = $rerank->rerank($question, $results);
+    $answer = $generate->generateChat($question, $rankedResults)['answer'];
 
-//             // Generate answer
-//             $answer = $generate->generateChat($question, $rerankedResults);
+    $chatHistory[] = [
+        'question' => $question,
+        'answer' => $answer
+    ];
+}
 
-//             $_SESSION['chat_history'][] = [
-//                 'question' => $question,
-//                 'results' => $rerankedResults,
-//                 'answer' => $answer['answer']
-//             ];
-
-
-//         } catch (Exception $e) {
-//             $_SESSION['error'] = "Error saat memproses pertanyaan: " . $e->getMessage();
-//         }
-//     } else {
-//         $_SESSION['error'] = "Pertanyaan tidak boleh kosong!";
-//     }
-// }
 ?>
 
 <!DOCTYPE html>
@@ -152,6 +135,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["pdfFile"])) {
             <br>
             <input type="submit" value="Kirim Pertanyaan">
         </form>
+    </div>
+
+    <div class="chat-history">
+        <h2>Riwayat Chat</h2>
+        <?php foreach ($chatHistory as $chat): ?>
+            <div class="chat-item">
+                <p class="user-question"><?php echo $chat['question']; ?></p>
+                <p class="assistant-answer"><?php echo $chat['answer']; ?></p>
+            </div>
+        <?php endforeach; ?>
     </div>
 </body>
 </html>

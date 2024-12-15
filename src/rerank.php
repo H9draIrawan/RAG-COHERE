@@ -1,14 +1,13 @@
 <?php
 class Rerank {
     private $apiKey;
-    private $apiEndpoint = 'https://api.cohere.ai/v2/rerank';
     private $model;
     private $maxResults = 10;
     private $logFile;
 
     public function __construct() {
         $this->apiKey = $_ENV['COHERE_API_KEY'];
-        $this->model = 'rerank-multilingual-v3.0';
+        $this->model = $_ENV['COHERE_RERANK_MODEL'];
         $this->logFile = __DIR__ . "/../logs/rerank.log";
         
         if (!file_exists(dirname($this->logFile))) {
@@ -24,8 +23,8 @@ class Rerank {
 
     public function rerank($query, $documents) {
         try {
+            
             $this->logMessage("Mulai proses reranking untuk query: " . $query);
-
             // Validasi input
             if (empty($query) || empty($documents)) {
                 throw new Exception("Query dan documents tidak boleh kosong");
@@ -41,7 +40,7 @@ class Rerank {
 
             // Siapkan data untuk request
             $data = [
-                'query' => $query,
+                'query' => "Berikan saya 10 hal yang paling relevan dari dokumen ini: " . $query,
                 'documents' => $formattedDocs,
                 'model' => $this->model,
                 'top_n' => $this->maxResults,
@@ -65,7 +64,7 @@ class Rerank {
 
     private function callCohereAPI($data) {
         $client = new \GuzzleHttp\Client();
-        $response = $client->post($this->apiEndpoint, [
+        $response = $client->post('https://api.cohere.com/v2/rerank', [
             'headers' => [
                 'Authorization' => "Bearer " . $this->apiKey,
                 'Content-Type' => 'application/json',
