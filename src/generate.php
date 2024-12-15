@@ -25,6 +25,7 @@ class Generate {
                         "Jika informasi tidak tersedia dalam dokumen, katakan bahwa Anda tidak dapat menjawab berdasarkan dokumen yang ada. " .
                         "Jika pertanyaan tidak ada hubungannya dengan dokumen, katakan bahwa Anda tidak dapat menjawab pertanyaan tersebut. " .
                         "Jawab sebaik mungkin dengan bahasa Indonesia.";
+            
             return $this->callCohereAPI($question, $retrievalResults, $systemPrompt, 'chat');
         } catch (Exception $e) {
             return ['error' => $e->getMessage()];
@@ -128,6 +129,12 @@ class Generate {
         } catch (Exception $e) {
             return ['error' => $e->getMessage()];
         }
+    }
+
+    private function prepareDocuments($retrievalResults) {
+        return array_map(function($result) {
+            return $result;
+        }, $retrievalResults);
     }
 
     private function callCohereAPI($question, $documents, $systemPrompt, $task) {

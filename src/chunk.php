@@ -5,9 +5,9 @@ class Chunk {
     private $chunkSize;
     private $chunkOverlap;
     private $logFile;
-    private $minChunkLength = 100; // Minimal panjang chunk yang valid
+    private $minChunkLength = 100;
 
-    public function __construct($chunkSize = 512, $chunkOverlap = 128) {
+    public function __construct($chunkSize = 1024, $chunkOverlap = 256) {
         $this->chunkSize = $chunkSize;
         $this->chunkOverlap = $chunkOverlap;
         $this->logFile = __DIR__ . "/../logs/chunk_process.log";

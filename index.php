@@ -26,6 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES["pdfFile"])) {
         $chunks = $chunks->processPDF($pdfFile["tmp_name"]);
         // Proses embedding
         $embedding->embedChunks($chunks);
+        $_SESSION['chunks'] = $chunks;
     } catch (Exception $e) {
         $_SESSION['error'] = "Error saat memproses file: " . $e->getMessage();
     }
@@ -45,67 +46,353 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["question"])) {
     ];
 }
 
+// Tambahkan di bagian awal file setelah session_start()
+$activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'chat';
+
+// Tambahkan setelah handle chat question
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    if (isset($_POST["summary"])) {
+        $summary = $generate->generateSummary($_SESSION['chunks'])['answer'];
+        $_SESSION['summary'] = $summary;
+    }
+    if (isset($_POST["exercise"])) {
+        $exercise = $generate->generateExercises($_SESSION['chunks'])['answer'];
+        $_SESSION['exercise'] = $exercise;
+    }
+    if (isset($_POST["note"])) {
+        $note = $generate->generateNotes($_SESSION['chunks'])['answer'];
+        $_SESSION['note'] = $note;
+    }
+}
+
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
     <title>Tutor AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        .error { color: red; }
-        .success { color: green; }
-        .chat-container {
-            margin-top: 20px;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
         }
+
+        body {
+            background: #f5f6fa;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #2d3436;
+            text-align: center;
+            margin: 30px 0;
+            font-size: 2.5em;
+        }
+
+        .upload-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .upload-container p {
+            margin-bottom: 15px;
+            color: #636e72;
+        }
+
+        input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 2px dashed #b2bec3;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        input[type="submit"] {
+            background: #0984e3;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+
+        input[type="submit"]:hover {
+            background: #0769b5;
+        }
+
+        .chat-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .chat-container h2 {
+            color: #2d3436;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #dfe6e9;
+            border-radius: 8px;
+            resize: vertical;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+
         .chat-history {
-            margin-top: 20px;
-            max-height: 300px;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-height: 500px;
             overflow-y: auto;
         }
-        .question {
-            background: #f0f0f0;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
+
+        .chat-item {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
         }
-        .timestamp {
-            font-size: 0.8em;
-            color: #666;
-        }
+
         .user-question {
-            font-weight: bold;
-            margin-bottom: 5px;
+            background: #f1f2f6;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            color: #2d3436;
+            font-weight: 500;
         }
-        
-        .results {
-            margin-top: 10px;
+
+        .assistant-answer {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            color: #2d3436;
+            line-height: 1.6;
+        }
+
+        .error {
+            background: #ff7675;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background: #00b894;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .upload-container,
+            .chat-container,
+            .chat-history {
+                padding: 20px;
+            }
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            background: white;
             padding: 10px;
-            background: #fff;
-            border-radius: 5px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
-        .result-item {
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
             border-radius: 5px;
+            margin-right: 10px;
+            color: #636e72;
+            transition: all 0.3s ease;
         }
         
-        .relevance-badge {
+        .tab.active {
+            background: #0984e3;
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .summary-content,
+        .exercise-content,
+        .note-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .generate-btn {
+            background: #00b894;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        .quiz-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .quiz-item {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .quiz-question {
+            margin-bottom: 20px;
+        }
+
+        .question-number {
             display: inline-block;
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 0.8em;
-            margin-bottom: 5px;
+            background: #0984e3;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-bottom: 10px;
         }
-        
-        .sangat-relevan { background: #4CAF50; color: white; }
-        .relevan { background: #2196F3; color: white; }
-        .cukup-relevan { background: #FF9800; color: white; }
-        .kurang-relevan { background: #f44336; color: white; }
+
+        .quiz-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .option {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .option:hover {
+            border-color: #0984e3;
+            background: #f8f9fa;
+        }
+
+        .option input[type="radio"] {
+            margin-right: 12px;
+        }
+
+        .option label {
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .answer-explanation {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #e3f2fd;
+        }
+
+        .answer-explanation.hidden {
+            display: none;
+        }
+
+        .correct-answer {
+            margin-bottom: 10px;
+            color: #2d3436;
+        }
+
+        .explanation {
+            color: #636e72;
+            line-height: 1.6;
+        }
+
+        .quiz-controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .check-answers-btn, .reset-quiz-btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .check-answers-btn {
+            background: #0984e3;
+            color: white;
+        }
+
+        .reset-quiz-btn {
+            background: #e9ecef;
+            color: #2d3436;
+        }
+
+        .check-answers-btn:hover {
+            background: #0769b5;
+        }
+
+        .reset-quiz-btn:hover {
+            background: #dee2e6;
+        }
+
+        .option.correct {
+            border-color: #00b894;
+            background: #e6fff9;
+        }
+
+        .option.wrong {
+            border-color: #ff7675;
+            background: #ffe9e9;
+        }
     </style>
 </head>
 <body>
@@ -122,29 +409,157 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["question"])) {
     }
     ?>
 
-    <form method="post" enctype="multipart/form-data">
-        <p>Upload file PDF untuk diproses:</p>
-        <input type="file" name="pdfFile" accept=".pdf" required>
-        <input type="submit" value="Upload & Proses" name="submit">
-    </form>
-
-    <div class="chat-container">
-        <h2>Tanya tentang Dokumen</h2>
-        <form method="post" action="">
-            <textarea name="question" rows="3" cols="50" placeholder="Tulis pertanyaan Anda tentang dokumen di sini..." required></textarea>
-            <br>
-            <input type="submit" value="Kirim Pertanyaan">
+    <div class="upload-container">
+        <form method="post" enctype="multipart/form-data">
+            <p>Upload file PDF untuk diproses:</p>
+            <input type="file" name="pdfFile" accept=".pdf" required>
+            <input type="submit" value="Upload & Proses" name="submit">
         </form>
     </div>
 
-    <div class="chat-history">
-        <h2>Riwayat Chat</h2>
-        <?php foreach ($chatHistory as $chat): ?>
-            <div class="chat-item">
-                <p class="user-question"><?php echo $chat['question']; ?></p>
-                <p class="assistant-answer"><?php echo $chat['answer']; ?></p>
-            </div>
-        <?php endforeach; ?>
+    <div class="tabs">
+        <div class="tab <?php echo $activeTab === 'chat' ? 'active' : ''; ?>" 
+             onclick="location.href='?tab=chat'">Chat</div>
+        <div class="tab <?php echo $activeTab === 'summary' ? 'active' : ''; ?>" 
+             onclick="location.href='?tab=summary'">Ringkasan</div>
+        <div class="tab <?php echo $activeTab === 'exercise' ? 'active' : ''; ?>" 
+             onclick="location.href='?tab=exercise'">Latihan</div>
+        <div class="tab <?php echo $activeTab === 'note' ? 'active' : ''; ?>" 
+             onclick="location.href='?tab=note'">Catatan</div>
     </div>
+
+    <!-- Chat Tab -->
+    <div class="tab-content <?php echo $activeTab === 'chat' ? 'active' : ''; ?>">
+        <div class="chat-container">
+            <h2>Tanya tentang Dokumen</h2>
+            <form method="post" action="">
+                <textarea name="question" rows="3" placeholder="Tulis pertanyaan Anda tentang dokumen di sini..." required></textarea>
+                <input type="submit" value="Kirim Pertanyaan">
+            </form>
+        </div>
+        <div class="chat-history">
+            <h2>Riwayat Chat</h2>
+            <?php if (!empty($chatHistory)): ?>
+                <?php foreach ($chatHistory as $chat): ?>
+                    <div class="chat-item">
+                        <div class="user-question"><?php echo htmlspecialchars($chat['question']); ?></div>
+                        <div class="assistant-answer"><?php echo nl2br(htmlspecialchars($chat['answer'])); ?></div>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p style="color: #636e72; text-align: center;">Belum ada riwayat chat</p>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Summary Tab -->
+    <div class="tab-content <?php echo $activeTab === 'summary' ? 'active' : ''; ?>">
+        <div class="summary-content">
+            <?php echo nl2br(htmlspecialchars($_SESSION['summary'])); ?>
+        </div>
+    </div>
+
+    <!-- Exercise Tab -->
+    <div class="tab-content <?php echo $activeTab === 'exercise' ? 'active' : ''; ?>">
+        <div class="exercise-content">
+            <?php if (!isset($_SESSION['exercise'])): ?>
+                <form method="post">
+                    <button type="submit" name="exercise" class="generate-btn">Generate Latihan Soal</button>
+                </form>
+            <?php else: ?>
+                <div class="quiz-container">
+                    <?php
+                    $exercises = $_SESSION['exercise']['soal'];
+                    foreach ($exercises as $exercise): ?>
+                        <div class="quiz-item">
+                            <div class="quiz-question">
+                                <span class="question-number">Soal <?php echo $exercise['nomor']; ?></span>
+                                <p><?php echo htmlspecialchars($exercise['pertanyaan']); ?></p>
+                            </div>
+                            
+                            <div class="quiz-options">
+                                <?php foreach ($exercise['pilihan'] as $index => $pilihan): ?>
+                                    <div class="option">
+                                        <input type="radio" 
+                                                name="question<?php echo $exercise['nomor']; ?>" 
+                                                id="q<?php echo $exercise['nomor'].'_'.$index; ?>"
+                                                value="<?php echo $index; ?>">
+                                        <label for="q<?php echo $exercise['nomor'].'_'.$index; ?>">
+                                            <?php echo $index . '. ' . htmlspecialchars($pilihan); ?>
+                                        </label>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <div class="answer-explanation hidden">
+                                <div class="correct-answer">
+                                    <strong>Jawaban Benar:</strong> 
+                                    <?php echo htmlspecialchars($exercise['jawaban_benar']); ?>
+                                </div>
+                                <div class="explanation">
+                                    <strong>Penjelasan:</strong>
+                                    <?php echo htmlspecialchars($exercise['penjelasan']); ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                    
+                    <div class="quiz-controls">
+                        <button class="check-answers-btn">Check</button>
+                        <button class="reset-quiz-btn">Reset</button>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Note Tab -->
+    <div class="tab-content <?php echo $activeTab === 'note' ? 'active' : ''; ?>">
+        <div class="note-content">
+            <form method="post">
+                <button type="submit" name="note" class="generate-btn">Generate Catatan</button>
+            </form>
+            <?php if (isset($note)): ?>
+                <div class="generated-content">
+                    <?php echo nl2br(htmlspecialchars($note)); ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const checkAnswersBtn = document.querySelector('.check-answers-btn');
+        const resetQuizBtn = document.querySelector('.reset-quiz-btn');
+        const explanations = document.querySelectorAll('.answer-explanation');
+        
+        if(checkAnswersBtn) {
+            checkAnswersBtn.addEventListener('click', function() {
+                // Tampilkan semua penjelasan
+                explanations.forEach(exp => exp.classList.remove('hidden'));
+                
+                // Logika pengecekan jawaban bisa ditambahkan di sini
+                // Contoh: menambahkan class correct/wrong ke option yang dipilih
+            });
+        }
+        
+        if(resetQuizBtn) {
+            resetQuizBtn.addEventListener('click', function() {
+                // Reset semua pilihan
+                document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    radio.checked = false;
+                });
+                
+                // Sembunyikan penjelasan
+                explanations.forEach(exp => exp.classList.add('hidden'));
+                
+                // Hapus class correct/wrong
+                document.querySelectorAll('.option').forEach(opt => {
+                    opt.classList.remove('correct', 'wrong');
+                });
+            });
+        }
+    });
+    </script>
 </body>
 </html>
